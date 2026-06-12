@@ -1,34 +1,60 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, UseGuards, UnauthorizedException } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { AuthGuard } from '@nestjs/passport';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { User } from '../users/entities/user.entity';
+
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  @Post()
-  create(@Body() createAuthDto: CreateAuthDto) {
-    return this.authService.create(createAuthDto);
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  googleLogin() {}
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleCallback(@Req() req: Request, @Res() res: Response) {
+    const user = req.user as User;
+    await this.authService.loginUser(user, res);
+    return res.redirect(`${this.configService.get('FRONTEND_URL')}/dashboard`);
   }
 
-  @Get()
-  findAll() {
-    return this.authService.findAll();
+  @Post('logout')
+  @UseGuards(AuthGuard('jwt'))
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const user = req.user as any;
+    await this.authService.logoutUser(user.id, res);
+    return res.status(200).json({ message: 'Sesión cerrada' });
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.authService.findOne(+id);
+  @Post('refresh')
+  async refresh(@Req() req: Request, @Res() res: Response) {
+    const refreshToken = req.cookies?.refresh_token;
+    if (!refreshToken) throw new UnauthorizedException('No refresh token');
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_SECRET') + '_refresh',
+      });
+    } catch {
+      throw new UnauthorizedException('Token expirado');
+    }
+    const { UsersService } = await import('../users/users.service');
+    return res.status(200).json({ message: 'Token renovado' });
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAuthDto: UpdateAuthDto) {
-    return this.authService.update(+id, updateAuthDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.authService.remove(+id);
+  @Get('session')
+  @UseGuards(AuthGuard('jwt'))
+  checkSession(@Req() req: Request) {
+    const user = req.user as any;
+    return { authenticated: true, user };
   }
 }
