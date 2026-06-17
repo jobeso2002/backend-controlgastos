@@ -10,6 +10,7 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "ignoreDeprecations": "5.0",   // ← agrega esta línea
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,
